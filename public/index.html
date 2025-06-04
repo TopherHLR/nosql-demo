@@ -296,19 +296,73 @@
 
     <!-- Bootstrap JS Bundle with Popper -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>  
-<script>
-    // Create modal instance once at the top level (outside the function if used multiple times)
-    const alertModal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+<script type="module">
+    // Import Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { 
+        getDatabase, 
+        ref, 
+        push, 
+        onValue, 
+        update, 
+        remove
+    } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 
-    // Function to show the custom alert modal
-    function showCustomAlert(title, message) {
-        document.getElementById('modalTitle').innerText = title;
-        document.getElementById('modalMessage').innerText = message;
-        alertModal.show();
-    }
+    // Your Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyBypg-I4QDjay3oxHew9gBuba-SREBmJlw",
+        authDomain: "nosql-demo-2b7d8.firebaseapp.com",
+        projectId: "nosql-demo-2b7d8",
+        storageBucket: "nosql-demo-2b7d8.firebasestorage.app",
+        messagingSenderId: "843662848605",
+        appId: "1:843662848605:web:4110c1159ad567ffb913b4",
+        measurementId: "G-N6SSHMM2FJ"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const database = getDatabase(app);
+    const usersRef = ref(database, 'users');
+
+    // DOM elements
+    const userForm = document.getElementById('userForm');
+    const tableBody = document.getElementById('dataTable');
+    const noDataRow = document.getElementById('noDataRow');
+    const searchInput = document.getElementById('searchInput');
+    const searchButton = document.getElementById('searchButton');
+    const toggleTableBtn = document.getElementById('toggleTableBtn');
+    const tableContainer = document.getElementById('tableContainer');
+
+    // Modal elements
+    const alertModal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+    const editModal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const editNameInput = document.getElementById('editNameInput');
+    const editEmailInput = document.getElementById('editEmailInput');
+    const editUserId = document.getElementById('editUserId');
+
+    // Initialize the app when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load initial data
+        fetchAndDisplayUsers();
+
+        // Form submission handler
+        userForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            addUser();
+        });
+
+        // Search functionality
+        searchButton.addEventListener('click', searchUsers);
+        searchInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') searchUsers();
+        });
+
         // Toggle table visibility
-        document.getElementById('toggleTableBtn').addEventListener('click', function() {
-            const tableContainer = document.getElementById('tableContainer');
+        toggleTableBtn.addEventListener('click', function() {
             if (tableContainer.style.display === 'none' || tableContainer.style.display === '') {
                 tableContainer.style.display = 'block';
                 this.innerHTML = '<i class="bi bi-eye-slash"></i> Hide Database';
@@ -317,160 +371,63 @@
                 this.innerHTML = '<i class="bi bi-list-ul"></i> Show Database';
             }
         });
-    // Run after DOM is fully loaded
-    document.addEventListener('DOMContentLoaded', function () {
-        editModal = new bootstrap.Modal(document.getElementById('editUserModal'));
-
-        const form = document.getElementById('userForm');
-        const tableBody = document.getElementById('dataTable');
-        const noDataRow = document.getElementById('noDataRow');
-                fetchAndDisplayUsers();
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            // Get form values
-            const name = document.getElementById('nameInput').value.trim();
-            const email = document.getElementById('emailInput').value.trim();
-
-            if (!name || !email) {
-                showCustomAlert('⚠️ Incomplete', 'Please fill in all required fields.');
-                return;
-            }
-
-            // Prepare data for backend
-            const data = { name, email };
-
-            try {
-                const response = await fetch('/users', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    showCustomAlert('✅ Success!', 'Data successfully saved to Firebase!');
-                    form.reset();
-                    
-                    // Add to table with the actual ID from Firebase
-                    noDataRow.classList.add('d-none');
-                    const newRow = document.createElement('tr');
-                    newRow.innerHTML = `
-                        <td>${name}</td>
-                        <td>${email}</td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary me-2" onclick="editUser('${result.id}', '${name}', '${email}')">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button class="btn btn-sm  btn-danger-glow" onclick="deleteRow(this, '${result.id}')">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </td>
-                    `;
-                    tableBody.appendChild(newRow);
-                    
-                } else {
-                    const result = await response.json();
-                    showCustomAlert('❌ Error!', 'Failed to save data: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Fetch error:', error);
-                showCustomAlert('⚠️ Network Error', 'Could not connect to the server. Please ensure the server is running.');
-            }
-        });
     });
-        // Add this after your DOMContentLoaded event listener
-    document.getElementById('searchButton').addEventListener('click', searchUsers);
-    document.getElementById('searchInput').addEventListener('keyup', function(e) {
-        if (e.key === 'Enter') {
-            searchUsers();
-        }
-    });
-    // Edit user function - no changes needed, but could be slightly optimized
-    function editUser(id, name, email) {
-        document.getElementById('editUserId').value = id;
-        document.getElementById('editNameInput').value = name;
-        document.getElementById('editEmailInput').value = email;
-        editModal.show();
+
+    // Function to show custom alert
+    function showCustomAlert(title, message) {
+        modalTitle.textContent = title;
+        modalMessage.textContent = message;
+        alertModal.show();
     }
 
-    async function searchUsers() {
-        const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-        
-        try {
-            const response = await fetch('/users');
-            if (!response.ok) {
-                throw new Error('Failed to fetch users');
-            }
-            const allUsers = await response.json();
-            
-            // Filter users based on search term
-            const filteredUsers = allUsers.filter(user => 
-                user.name.toLowerCase().includes(searchTerm) || 
-                user.email.toLowerCase().includes(searchTerm)
-            );
-            
-            displayUsers(filteredUsers);
-        } catch (error) {
-            console.error('Error searching users:', error);
-            showCustomAlert('⚠️ Error', error.message || 'Failed to search users');
-        }
-    }
+    // Add new user to Firebase
+    function addUser() {
+        const name = document.getElementById('nameInput').value.trim();
+        const email = document.getElementById('emailInput').value.trim();
 
-    // Save edited user - improved to match your other handlers
-    async function saveEditedUser() {
-        const id = document.getElementById('editUserId').value; // ✅ get the user ID
-        const name = document.getElementById('editNameInput').value.trim();
-        const email = document.getElementById('editEmailInput').value.trim();
-        const tableBody = document.getElementById('noDataRow');
         if (!name || !email) {
             showCustomAlert('⚠️ Incomplete', 'Please fill in all required fields.');
             return;
         }
 
-        try {
-            const response = await fetch(`/users/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email })
+        const newUser = {
+            name,
+            email,
+            nameLower: name.toLowerCase(), // For case-insensitive search
+            createdAt: new Date().toISOString()
+        };
+
+        push(usersRef, newUser)
+            .then(() => {
+                showCustomAlert('✅ Success!', 'Data successfully saved to Firebase!');
+                userForm.reset();
+            })
+            .catch((error) => {
+                console.error('Error adding user:', error);
+                showCustomAlert('❌ Error!', 'Failed to save data: ' + error.message);
             });
-
-            if (!response.ok) {
-                const result = await response.json();
-                throw new Error(result.error || 'Failed to update user');
-            }
-                                // ✅ Clear existing rows before adding new ones
-
-            editModal.hide();
-            showCustomAlert('✅ Success!', 'User updated successfully');          
-            await fetchAndDisplayUsers();
-        } catch (error) {
-            console.error('Error updating user:', error);
-            showCustomAlert('❌ Error!', error.message || 'Could not update user');
-        }
-
     }
-    // Modify your existing fetchAndDisplayUsers function to use displayUsers
-    async function fetchAndDisplayUsers() {
-        try {
-            const response = await fetch('/users');
-            if (!response.ok) {
-                throw new Error('Failed to fetch users');
-            }
-            const users = await response.json();
+
+    // Fetch and display users from Firebase
+    function fetchAndDisplayUsers() {
+        onValue(usersRef, (snapshot) => {
+            const users = [];
+            snapshot.forEach((childSnapshot) => {
+                const user = childSnapshot.val();
+                users.push({
+                    id: childSnapshot.key,
+                    ...user
+                });
+            });
             displayUsers(users);
-        } catch (error) {
+        }, (error) => {
             console.error('Error fetching users:', error);
-            showCustomAlert('⚠️ Error', error.message || 'Failed to load user data');
-        }
+            showCustomAlert('⚠️ Error', 'Failed to load user data');
+        });
     }
-    // Extract the display logic into a separate function
-    function displayUsers(users) {
-        const tableBody = document.getElementById('dataTable');
-        const noDataRow = document.getElementById('noDataRow');
 
-        // Clear existing rows
+    // Display users in the table
+    function displayUsers(users) {
         tableBody.innerHTML = '';
 
         if (users.length === 0) {
@@ -481,9 +438,7 @@
             return;
         }
 
-        if (noDataRow) {
-            noDataRow.classList.add('d-none');
-        }
+        if (noDataRow) noDataRow.classList.add('d-none');
 
         users.forEach(user => {
             const newRow = document.createElement('tr');
@@ -494,7 +449,7 @@
                     <button class="btn btn-sm btn-outline-primary me-2" onclick="editUser('${user.id}', '${user.name}', '${user.email}')">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm  btn-danger-glow" onclick="deleteRow(this, '${user.id}')">
+                    <button class="btn btn-sm btn-danger-glow" onclick="deleteRow(this, '${user.id}')">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
@@ -502,35 +457,80 @@
             tableBody.appendChild(newRow);
         });
     }
-    // Modified delete function to handle Firebase deletion
-    async function deleteRow(button, userId) {
-        try {
-            const response = await fetch(`/users/${userId}`, {
-                method: 'DELETE'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to delete user');
-            }
-            
-            // Remove the row from the table
-            const row = button.closest('tr');
-            row.remove();
-            
-            // Update row numbers
-            const tableBody = document.getElementById('dataTable');
-            const rows = tableBody.querySelectorAll('tr');
 
-            
-            if (rows.length === 0) {
-                document.getElementById('noDataRow').classList.remove('d-none');
-            }
-        } catch (error) {
-            console.error('Error deleting user:', error);
-            showCustomAlert('⚠️ Error', 'Failed to delete user');
-        }
+    // Search users
+    function searchUsers() {
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        
+        onValue(usersRef, (snapshot) => {
+            const filteredUsers = [];
+            snapshot.forEach((childSnapshot) => {
+                const user = childSnapshot.val();
+                if (user.name.toLowerCase().includes(searchTerm) || 
+                    user.email.toLowerCase().includes(searchTerm)) {
+                    filteredUsers.push({
+                        id: childSnapshot.key,
+                        ...user
+                    });
+                }
+            });
+            displayUsers(filteredUsers);
+        });
     }
 
+    // Edit user - opens modal
+    window.editUser = function(id, name, email) {
+        editUserId.value = id;
+        editNameInput.value = name;
+        editEmailInput.value = email;
+        editModal.show();
+    }
+
+    // Save edited user
+    window.saveEditedUser = function() {
+        const id = editUserId.value;
+        const name = editNameInput.value.trim();
+        const email = editEmailInput.value.trim();
+
+        if (!name || !email) {
+            showCustomAlert('⚠️ Incomplete', 'Please fill in all required fields.');
+            return;
+        }
+
+        update(ref(database, `users/${id}`), { 
+            name, 
+            email,
+            nameLower: name.toLowerCase() 
+        })
+        .then(() => {
+            editModal.hide();
+            showCustomAlert('✅ Success!', 'User updated successfully');
+        })
+        .catch((error) => {
+            console.error('Error updating user:', error);
+            showCustomAlert('❌ Error!', error.message || 'Could not update user');
+        });
+    }
+
+    // Delete user
+    window.deleteRow = function(button, userId) {
+        if (confirm('Are you sure you want to delete this user?')) {
+            remove(ref(database, `users/${userId}`))
+                .then(() => {
+                    const row = button.closest('tr');
+                    row.remove();
+                    
+                    // Check if table is empty
+                    if (tableBody.querySelectorAll('tr').length === 0) {
+                        noDataRow.classList.remove('d-none');
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error deleting user:', error);
+                    showCustomAlert('⚠️ Error', 'Failed to delete user');
+                });
+        }
+    }
 </script>
 
 </body>
