@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+                                                                                                                                                                                                                                                  
 <style>
     body {
         font-family: 'Courier New', monospace;
@@ -297,24 +298,16 @@
     <!-- Bootstrap JS Bundle with Popper -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>  
 <script type="module">
-    // Import Firebase modules
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { 
-        getDatabase, 
-        ref, 
-        push, 
-        onValue, 
-        update, 
-        remove
-    } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // Your Firebase configuration
     const firebaseConfig = {
         apiKey: "AIzaSyBypg-I4QDjay3oxHew9gBuba-SREBmJlw",
         authDomain: "nosql-demo-2b7d8.firebaseapp.com",
         projectId: "nosql-demo-2b7d8",
-        storageBucket: "nosql-demo-2b7d8.firebasestorage.app",
+        storageBucket: "nosql-demo-2b7d8.appspot.com",
         messagingSenderId: "843662848605",
         appId: "1:843662848605:web:4110c1159ad567ffb913b4",
         measurementId: "G-N6SSHMM2FJ"
@@ -322,9 +315,8 @@
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const database = getDatabase(app);
-    const usersRef = ref(database, 'users');
+    const db = getFirestore(app);
+    const usersCollection = collection(db, "users");
 
     // DOM elements
     const userForm = document.getElementById('userForm');
@@ -381,7 +373,7 @@
     }
 
     // Add new user to Firebase
-    function addUser() {
+    async function addUser() {
         const name = document.getElementById('nameInput').value.trim();
         const email = document.getElementById('emailInput').value.trim();
 
@@ -397,25 +389,24 @@
             createdAt: new Date().toISOString()
         };
 
-        push(usersRef, newUser)
-            .then(() => {
-                showCustomAlert('✅ Success!', 'Data successfully saved to Firebase!');
-                userForm.reset();
-            })
-            .catch((error) => {
-                console.error('Error adding user:', error);
-                showCustomAlert('❌ Error!', 'Failed to save data: ' + error.message);
-            });
+        try {
+            await addDoc(usersCollection, newUser);
+            showCustomAlert('✅ Success!', 'Data successfully saved to Firebase!');
+            userForm.reset();
+        } catch (error) {
+            console.error('Error adding user:', error);
+            showCustomAlert('❌ Error!', 'Failed to save data: ' + error.message);
+        }
     }
 
     // Fetch and display users from Firebase
     function fetchAndDisplayUsers() {
-        onValue(usersRef, (snapshot) => {
+        onSnapshot(usersCollection, (snapshot) => {
             const users = [];
-            snapshot.forEach((childSnapshot) => {
-                const user = childSnapshot.val();
+            snapshot.forEach((doc) => {
+                const user = doc.data();
                 users.push({
-                    id: childSnapshot.key,
+                    id: doc.id,
                     ...user
                 });
             });
@@ -462,14 +453,14 @@
     function searchUsers() {
         const searchTerm = searchInput.value.trim().toLowerCase();
         
-        onValue(usersRef, (snapshot) => {
+        onSnapshot(usersCollection, (snapshot) => {
             const filteredUsers = [];
-            snapshot.forEach((childSnapshot) => {
-                const user = childSnapshot.val();
+            snapshot.forEach((doc) => {
+                const user = doc.data();
                 if (user.name.toLowerCase().includes(searchTerm) || 
                     user.email.toLowerCase().includes(searchTerm)) {
                     filteredUsers.push({
-                        id: childSnapshot.key,
+                        id: doc.id,
                         ...user
                     });
                 }
@@ -487,7 +478,7 @@
     }
 
     // Save edited user
-    window.saveEditedUser = function() {
+    window.saveEditedUser = async function() {
         const id = editUserId.value;
         const name = editNameInput.value.trim();
         const email = editEmailInput.value.trim();
@@ -497,38 +488,39 @@
             return;
         }
 
-        update(ref(database, `users/${id}`), { 
-            name, 
-            email,
-            nameLower: name.toLowerCase() 
-        })
-        .then(() => {
+        try {
+            const userDoc = doc(db, "users", id);
+            await updateDoc(userDoc, { 
+                name, 
+                email,
+                nameLower: name.toLowerCase() 
+            });
             editModal.hide();
             showCustomAlert('✅ Success!', 'User updated successfully');
-        })
-        .catch((error) => {
+        } catch (error) {
             console.error('Error updating user:', error);
             showCustomAlert('❌ Error!', error.message || 'Could not update user');
-        });
+        }
     }
 
     // Delete user
-    window.deleteRow = function(button, userId) {
+    window.deleteRow = async function(button, userId) {
         if (confirm('Are you sure you want to delete this user?')) {
-            remove(ref(database, `users/${userId}`))
-                .then(() => {
-                    const row = button.closest('tr');
-                    row.remove();
-                    
-                    // Check if table is empty
-                    if (tableBody.querySelectorAll('tr').length === 0) {
-                        noDataRow.classList.remove('d-none');
-                    }
-                })
-                .catch((error) => {
-                    console.error('Error deleting user:', error);
-                    showCustomAlert('⚠️ Error', 'Failed to delete user');
-                });
+            try {
+                const userDoc = doc(db, "users", userId);
+                await deleteDoc(userDoc);
+                
+                const row = button.closest('tr');
+                row.remove();
+                
+                // Check if table is empty
+                if (tableBody.querySelectorAll('tr').length === 0) {
+                    noDataRow.classList.remove('d-none');
+                }
+            } catch (error) {
+                console.error('Error deleting user:', error);
+                showCustomAlert('⚠️ Error', 'Failed to delete user');
+            }
         }
     }
 </script>
